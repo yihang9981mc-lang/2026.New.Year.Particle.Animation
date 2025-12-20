@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>2026新年粒子动画祝福（精准倒计时触发版）</title>
+<style>
+* {margin: 0; padding: 0; box-sizing: border-box;}
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #000;
+    overflow: hidden;
+}
+.container {
+    width: 100vw;
+    height: 100vh;
+    position: relative;
+    background: radial-gradient(#111, #000);
+    overflow: hidden;
+}
+#fireworkCanvas, #particleCanvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    overflow: hidden;
+    opacity: 0; /* 初始隐藏粒子画布 */
+    transition: opacity 1s ease; /* 渐显动画 */
+}
+#fireworkCanvas {z-index: 0;}
+#particleCanvas {z-index: 1;}
+/* 实时时间 + 新年倒计时样式 */
+.time-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 3;
+    font-family: Arial, "Microsoft YaHei", sans-serif;
+    color: #ffffff;
+}
+.real-time {
+    font-size: 2vw;
+    font-weight: bold;
+    text-shadow: 0 0 8px #ffffff, 0 0 15px #ffffff;
+    margin-bottom: 8px;
+}
+.new-year-countdown {
+    font-size: 1.8vw;
+    font-weight: bold;
+    text-shadow: 0 0 8px #ffdd59, 0 0 15px #ffdd59;
+    color: #ffdd59;
+}
+/* 倒计时等待文字 */
+.wait-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    font-size: 6vw;
+    font-weight: bold;
+    color: #ffffff;
+    text-shadow: 0 0 10px #ffffff, 0 0 20px #ffffff, 0 0 30px #ffffff;
+    opacity: 1;
+    transition: opacity 1s ease;
+}
+.text-layer {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 2;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 8vw;
+    font-weight: bold;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+    color: #ffffff;
+    text-shadow: 0 0 10px #ffffff, 0 0 20px #ffffff, 0 0 30px #ffffff;
+}
+.text-layer.active {opacity: 1;}
+.countdown-layer { 
+    font-size: 12vw; 
+    text-shadow: 0 0 15px #ffffff, 0 0 30px #ffffff, 0 0 45px #ffffff, 0 0 60px #ffffff; 
+}
+.english-layer { 
+    font-size: 6vw; 
+    letter-spacing: 0.5vw; 
+}
+</style>
+</head>
+<body>
+<div class="container">
+    <!-- 实时时间 + 新年倒计时容器 -->
+    <div class="time-container">
+        <div class="real-time" id="realTime"></div>
+        <div class="new-year-countdown" id="newYearCountdown"></div>
+    </div>
+    <!-- 倒计时等待提示 -->
+    <div class="wait-text" id="waitText">等待2026新年到来...</div>
+    <canvas id="fireworkCanvas"></canvas>
+    <canvas id="particleCanvas"></canvas>
+    <div class="text-layer" id="t1">2026</div>
+    <div class="text-layer" id="t2">新年快乐</div>
+    <div class="text-layer" id="t3">万事顺意</div>
+    <div class="text-layer" id="t4">平安喜乐</div>
+    <div class="text-layer" id="t5">前程似锦</div>
+    <div class="text-layer" id="t6">阖家幸福</div>
+    <div class="text-layer" id="t7">财源广进</div>
+    <div class="text-layer" id="t8">好运连连</div>
+    <div class="text-layer english-layer" id="t10">2026 HAPPY NEW YEAR</div>
+</div>
+
+<script>
+(function(){
+    // 获取画布和上下文
+    const fCanvas = document.getElementById('fireworkCanvas');
+    const fCtx = fCanvas.getContext('2d');
+    const pCanvas = document.getElementById('particleCanvas');
+    const pCtx = pCanvas.getContext('2d');
+    // 时间DOM
+    const realTimeEl = document.getElementById('realTime');
+    const newYearCountdownEl = document.getElementById('newYearCountdown');
+    // 等待文字DOM
+    const waitTextEl = document.getElementById('waitText');
+
+    // 全局变量
+    let fireworks = [], fParticles = [], pParticles = [];
+    let currentIdx = 0, switchInterval = null;
+    const texts = ['2026','新年快乐','万事顺意','平安喜乐','前程似锦','阖家幸福','财源广进','好运连连','2026 HAPPY NEW YEAR'];
+    const pCount = 1000; 
+    const particleSize = 1.2; 
+    let centerX=0, centerY=0;
+    // 文字粒子专属边界限制
+    const textParticlePadding = 40; 
+    let textSafeWidth = 0; 
+    let textSafeHeight = 0;
+    // 动画状态标记
+    let isAnimationStarted = false;
+
+    // ========== 核心配置：新年倒计时目标时间（2026年元旦 00:00:00） ==========
+    const TARGET_NEW_YEAR = new Date('2026-01-01 00:00:00');
+
+    // 文字ID映射（移除3/2/1倒计时）
+    const textConfigMap = {
+        0: {id: 't1'},
+        1: {id: 't2'},
+        2: {id: 't3'},
+        3: {id: 't4'},
+        4: {id: 't5'},
+        5: {id: 't6'},
+        6: {id: 't7'},
+        7: {id: 't8'},
+        8: {id: 't10'}
+    };
+
+    // ========== 1. 实时时间格式化 ==========
+    function formatRealTime() {
+        const now = new Date();
+        const pad = num => num.toString().padStart(2, '0');
+        
+        const year = now.getFullYear();
+        const month = pad(now.getMonth() + 1);
+        const day = pad(now.getDate());
+        const hour = pad(now.getHours());
+        const minute = pad(now.getMinutes());
+        const second = pad(now.getSeconds());
+        
+        return `${year}年${month}月${day}日 ${hour}:${minute}:${second}`;
+    }
+
+    // ========== 2. 新年倒计时计算（天/时/分/秒） ==========
+    function calculateNewYearCountdown() {
+        const now = new Date();
+        const timeDiff = TARGET_NEW_YEAR - now;
+
+        // 如果已经到了新年，启动动画
+        if (timeDiff <= 0) {
+            if (!isAnimationStarted) {
+                startNewYearAnimation();
+            }
+            return '2026新年快乐！🎉';
+        }
+
+        // 计算天/时/分/秒
+        const days = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((timeDiff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        const minutes = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((timeDiff % (1000 * 60)) / 1000);
+
+        // 补零
+        const pad = num => num.toString().padStart(2, '0');
+        return `距离2026新年还有：${days}天${pad(hours)}时${pad(minutes)}分${pad(seconds)}秒`;
+    }
+
+    // ========== 3. 更新时间显示（实时时间 + 新年倒计时） ==========
+    function updateAllTime() {
+        // 更新实时时间
+        realTimeEl.textContent = formatRealTime();
+        // 更新新年倒计时
+        newYearCountdownEl.textContent = calculateNewYearCountdown();
+        // 每秒更新
+        setTimeout(updateAllTime, 1000);
+    }
+
+    // ========== 4. 启动新年动画（核心：倒计时结束后执行） ==========
+    function startNewYearAnimation() {
+        // 标记动画已启动
+        isAnimationStarted = true;
+        
+        // 隐藏等待文字
+        waitTextEl.style.opacity = 0;
+        
+        // 显示粒子画布（渐显）
+        fCanvas.style.opacity = 1;
+        pCanvas.style.opacity = 1;
+        
+        // 初始化粒子
+        resize();
+        createPParticles(texts[0]);
+        document.getElementById('t1').classList.add('active');
+        
+        // 启动祝福语切换
+        switchInterval = setInterval(() => {
+            currentIdx = (currentIdx + 1) % texts.length;
+            createPParticles(texts[currentIdx]);
+            document.querySelectorAll('.text-layer').forEach(el => el.classList.remove('active'));
+            const currentConfig = textConfigMap[currentIdx];
+            if(currentConfig) document.getElementById(currentConfig.id).classList.add('active');
+        }, 1800);
+        
+        // 启动动画主循环
+        animate();
+    }
+
+    // 窗口大小调整
+    function resize(){
+        fCanvas.width = pCanvas.width = window.innerWidth;
+        fCanvas.height = pCanvas.height = window.innerHeight;
+        
+        centerX = window.innerWidth / 2;
+        centerY = window.innerHeight / 2;
+        textSafeWidth = window.innerWidth - textParticlePadding * 2;
+        textSafeHeight = window.innerHeight - textParticlePadding * 2;
+    }
+
+    // 烟花类
+    class Firework{
+        constructor(){
+            this.x = Math.random()*fCanvas.width;
+            this.y = fCanvas.height;
+            this.targetY = Math.random()*fCanvas.height*0.4;
+            this.targetX = Math.random()*fCanvas.width;
+            this.vx = (this.targetX-this.x)/70;
+            this.vy = (this.targetY-this.y)/70 - Math.random()*2;
+            this.ay = 0.02;
+            this.color = '#ffffff';
+            this.exploded = false;
+        }
+        update(){
+            if(!this.exploded){
+                this.vy += this.ay;
+                this.x += this.vx;
+                this.y += this.vy;
+                if(Math.abs(this.x-this.targetX)<3 && Math.abs(this.y-this.targetY)<3){
+                    this.explode();
+                    this.exploded = true;
+                }
+            }
+        }
+        explode(){
+            for(let i=0;i<60;i++) fParticles.push(new FParticle(this.x,this.y));
+        }
+        draw(){
+            if(!this.exploded){
+                fCtx.beginPath();
+                fCtx.moveTo(this.x,this.y);
+                fCtx.lineTo(this.x-this.vx*3,this.y-this.vy*3);
+                fCtx.strokeStyle = this.color;
+                fCtx.lineWidth = 3;
+                fCtx.stroke();
+            }
+        }
+    }
+
+    // 烟花粒子类
+    class FParticle{
+        constructor(x,y){
+            this.x=x; this.y=y;
+            this.vx=(Math.random()-0.5)*6;
+            this.vy=(Math.random()-0.5)*6;
+            this.ay=0.08;
+            this.color='#ffffff';
+            this.alpha=1;
+            this.decay=Math.random()*0.015+0.005;
+        }
+        update(){ 
+            this.vy+=this.ay; 
+            this.x+=this.vx; 
+            this.y+=this.vy; 
+            this.alpha-=this.decay; 
+            if(this.x < 0 || this.x > fCanvas.width || this.y < 0 || this.y > fCanvas.height){
+                this.alpha = 0;
+            }
+        }
+        draw(){
+            if(this.alpha <= 0) return;
+            fCtx.save();
+            fCtx.globalAlpha=this.alpha;
+            fCtx.beginPath();
+            fCtx.arc(this.x,this.y,3,0,Math.PI*2);
+            fCtx.fillStyle=this.color;
+            fCtx.shadowColor = '#ffffff';
+            fCtx.shadowBlur = 10;
+            fCtx.fill();
+            fCtx.restore();
+        }
+    }
+
+    // 创建文字粒子
+    function createPParticles(text){
+        pParticles = [];
+        pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+        
+        let fontSize = Math.min(
+            textSafeHeight * 0.4,
+            textSafeWidth / text.length * 1.2,
+            window.innerHeight * 0.4
+        );
+        if(text.includes('HAPPY NEW YEAR')) fontSize = Math.min(textSafeHeight * 0.25, window.innerHeight * 0.25);
+        
+        pCtx.font = `bold ${fontSize}px Arial, "Microsoft YaHei", sans-serif`;
+        pCtx.textAlign = 'center'; 
+        pCtx.textBaseline = 'middle';
+        pCtx.fillStyle = '#ffffff';
+        pCtx.fillText(text, centerX, centerY);
+
+        const imgData = pCtx.getImageData(0, 0, pCanvas.width, pCanvas.height);
+        const pixels = imgData.data;
+        const valid = [];
+        
+        for(let y = textParticlePadding; y < window.innerHeight - textParticlePadding; y += 3){
+            for(let x = textParticlePadding; x < window.innerWidth - textParticlePadding; x += 3){
+                const i = (y * pCanvas.width + x) * 4;
+                if(pixels[i+3] > 128){
+                    valid.push({x, y});
+                }
+            }
+        }
+        
+        const defaultPos = {x: centerX, y: centerY};
+        
+        for(let i=0; i<pCount; i++){
+            const pos = valid[Math.floor(Math.random() * valid.length)] || defaultPos;
+            const startX = textParticlePadding + Math.random() * textSafeWidth;
+            const startY = textParticlePadding + Math.random() * textSafeHeight;
+            
+            pParticles.push({
+                x: startX, 
+                y: startY, 
+                targetX: pos.x, 
+                targetY: pos.y, 
+                size: particleSize, 
+                color: '#ffffff', 
+                speed: 1.5
+            });
+        }
+    }
+
+    // 更新文字粒子
+    function updatePParticles(){
+        pCtx.clearRect(0, 0, pCanvas.width, pCanvas.height);
+        pParticles.forEach(p => {
+            const dx = p.targetX - p.x;
+            const dy = p.targetY - p.y;
+            const ease = 0.05 + Math.random() * 0.01;
+            
+            p.x += dx * ease * p.speed;
+            p.y += dy * ease * p.speed;
+
+            p.x = Math.max(textParticlePadding, Math.min(window.innerWidth - textParticlePadding, p.x));
+            p.y = Math.max(textParticlePadding, Math.min(window.innerHeight - textParticlePadding, p.y));
+
+            pCtx.shadowColor = '#ffffff'; 
+            pCtx.shadowBlur = 8;
+            pCtx.beginPath();
+            pCtx.arc(p.x, p.y, particleSize, 0, Math.PI*2);
+            pCtx.fillStyle = '#ffffff';
+            pCtx.fill();
+            pCtx.shadowBlur = 0;
+        });
+    }
+
+    // 动画主循环
+    function animate(){
+        if (!isAnimationStarted) return; // 未到时间不执行动画
+        
+        fCtx.fillStyle = 'rgba(0,0,0,0.05)';
+        fCtx.fillRect(0, 0, fCanvas.width, fCanvas.height);
+
+        if(Math.random() < 0.03) fireworks.push(new Firework());
+        
+        fireworks = fireworks.filter(f => !f.exploded || fParticles.length > 0);
+        fireworks.forEach(f => {f.update(); f.draw();});
+
+        fParticles = fParticles.filter(p => p.alpha > 0);
+        fParticles.forEach(p => {p.update(); p.draw();});
+
+        updatePParticles();
+        
+        requestAnimationFrame(animate);
+    }
+
+    // 初始化
+    document.addEventListener('DOMContentLoaded', function(){
+        // 启动时间更新（实时时间 + 新年真实倒计时）
+        updateAllTime();
+        
+        // 监听窗口大小变化
+        window.addEventListener('resize', () => {
+            if (isAnimationStarted) resize();
+        });
+
+        // 测试用：立即启动动画（注释掉下面这行，恢复真实倒计时逻辑）
+        // startNewYearAnimation();
+    });
+})();
+</script>
+</body>
+</html>
